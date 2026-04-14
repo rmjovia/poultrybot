@@ -4,3 +4,6 @@ pillow
 fastapi
 uvicorn
 torch
+requests
+python-multipart
+
