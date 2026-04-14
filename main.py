@@ -9,6 +9,7 @@ from PIL import Image
 
 app = FastAPI()
 
+# Load model once at startup
 model = YOLO("best.pt")
 print("Model loaded successfully.")
 
@@ -25,16 +26,31 @@ async def predict(request: Request):
         if not image_data:
             return {"error": "No image_url provided"}
 
+        # Handle Base64 Data
         if image_data.startswith("data:image"):
             base64_data = re.sub(r'^data:image/.+;base64,', '', image_data)
             img_bytes = base64.b64decode(base64_data)
             img = Image.open(BytesIO(img_bytes)).convert('RGB')
+        
+        # Handle Image URL
         else:
-            response = requests.get(image_data, timeout=10)
+            # ADDED: Standard Browser Headers to prevent 403 Forbidden errors
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+            }
+            
+            response = requests.get(image_data, headers=headers, timeout=15)
+            
+            # Check if the download actually worked
+            if response.status_code != 200:
+                return {"error": f"Failed to download image. Status code: {response.status_code}"}
+            
             img = Image.open(BytesIO(response.content)).convert('RGB')
 
+        # Run Inference
         results = model(img)
 
+        # Process Results
         if len(results[0].boxes) > 0:
             top_box = results[0].boxes[0]
             predicted_class = results[0].names[int(top_box.cls)]
@@ -44,4 +60,5 @@ async def predict(request: Request):
         return {"disease": "Healthy", "confidence": 0.0}
 
     except Exception as e:
-        return {"error": str(e)}
+        # This will now catch the "cannot identify image file" error if the file is corrupted
+        return {"error": f"Prediction error: {str(e)}"}
