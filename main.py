@@ -3,7 +3,7 @@ import torch # or tensorflow
 from PIL import Image
 
 app = FastAPI()
-model = torch.load('best (2).pt\best', map_content='cpu') # Load your Colab model
+model = torch.load('best (2).pt', map_content='cpu') # Load your Colab model
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
