@@ -3,7 +3,7 @@ ultralytics
 pillow
 fastapi
 uvicorn
-torch
+#torch
 requests
 python-multipart
 
