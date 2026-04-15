@@ -45,49 +45,45 @@ async def predict(
     try:
         img = None
 
-        # Scenario 1: Raw File Upload (Matches the Flutter code provided)
-        if file:
+        # Scenario 1: Raw File Upload (This is what Flutter uses!)
+        if file is not None:
             contents = await file.read()
             img = Image.open(io.BytesIO(contents)).convert('RGB')
 
         # Scenario 2: JSON (Base64 or URL)
-        else:
-            data = await request.json()
-            image_data = data.get("image_url")
+        elif request is not None:
+            # Only try to parse JSON if we didn't get a file
+            try:
+                data = await request.json()
+                image_data = data.get("image_url")
 
-            if not image_data:
-                return {"error": "No image or URL provided"}
-
-            if image_data.startswith("data:image"):
-                base64_data = re.sub(r'^data:image/.+;base64,', '', image_data)
-                img_bytes = base64.b64decode(base64_data)
-                img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-            else:
-                headers = {"User-Agent": "PoulPal-App"}
-                response = requests.get(image_data, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    img = Image.open(io.BytesIO(response.content)).convert('RGB')
+                if image_data:
+                    if image_data.startswith("data:image"):
+                        base64_data = re.sub(r'^data:image/.+;base64,', '', image_data)
+                        img_bytes = base64.b64decode(base64_data)
+                        img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
+                    else:
+                        headers = {"User-Agent": "PoulPal-App"}
+                        response = requests.get(image_data, headers=headers, timeout=10)
+                        if response.status_code == 200:
+                            img = Image.open(io.BytesIO(response.content)).convert('RGB')
+            except Exception:
+                pass # If JSON parsing fails, just move on
 
         if img is None:
-            return {"error": "Invalid image input"}
+            return {"error": "Invalid image input. Please send a file or a valid JSON payload."}
 
-        # ==========================================
-        # APPLY THE FIX: Resize BEFORE giving to YOLO
-        # ==========================================
+        # Resize BEFORE giving to YOLO to prevent RAM exhaustion
         img = optimize_image(img, max_dim=640)
 
         # Run Inference
-        # imgsz=320 reduces RAM usage on Render
         results = model.predict(source=img, imgsz=320, conf=0.25)
 
         if len(results[0].boxes) > 0:
-            # Get the detection with the highest confidence
             top_box = results[0].boxes[0]
-            # Map the model's class name to PoulPal IDs
             predicted_class = results[0].names[int(top_box.cls)].lower()
             confidence = float(top_box.conf)
             
-            # Ensure the class name matches your local KB (cocci, ncd, salmonella, healthy)
             return {
                 "disease": predicted_class, 
                 "confidence": round(confidence, 4)
@@ -96,7 +92,6 @@ async def predict(
         return {"disease": "healthy", "confidence": 0.0}
 
     except Exception as e:
-        # If anything fails, return the exact error so Flutter can display it
         return {"error": f"Internal Server Error: {str(e)}"}
 
 if __name__ == "__main__":
