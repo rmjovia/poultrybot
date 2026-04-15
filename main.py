@@ -21,6 +21,18 @@ app.add_middleware(
 # Load model with half-precision (saves RAM on Render Free Tier)
 model = YOLO("best.pt")
 
+# ==========================================
+# THE FIX: Helper function to prevent RAM exhaustion
+# ==========================================
+def optimize_image(img: Image.Image, max_dim: int = 640) -> Image.Image:
+    """
+    Resizes the image so its longest side is max_dim, preserving the aspect ratio.
+    This prevents massive 12-megapixel phone photos from crashing the Render server.
+    """
+    # thumbnail modifies the image in-place and keeps aspect ratio intact
+    img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+    return img
+
 @app.get("/")
 async def root():
     return {"status": "online", "system": "PoulPal AI"}
@@ -59,6 +71,11 @@ async def predict(
         if img is None:
             return {"error": "Invalid image input"}
 
+        # ==========================================
+        # APPLY THE FIX: Resize BEFORE giving to YOLO
+        # ==========================================
+        img = optimize_image(img, max_dim=640)
+
         # Run Inference
         # imgsz=320 reduces RAM usage on Render
         results = model.predict(source=img, imgsz=320, conf=0.25)
@@ -79,6 +96,7 @@ async def predict(
         return {"disease": "healthy", "confidence": 0.0}
 
     except Exception as e:
+        # If anything fails, return the exact error so Flutter can display it
         return {"error": f"Internal Server Error: {str(e)}"}
 
 if __name__ == "__main__":
